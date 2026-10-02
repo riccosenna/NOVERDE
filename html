@@ -606,7 +606,7 @@ function dividas(r){
   const cards=ativ.length?ativ.map((d,i)=>`<div class="debt"><div class="top">
       <div style="display:flex;gap:12px"><span class="rank ${d.juros>=6||d.atraso?"bad":"warn"}">${i+1}</span>
         <div><strong>${esc(d.nome)}</strong><div class="small muted">${TIPOS[d.tipo]?.[0]||""}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${d.atraso?'<span class="chip bad">Em atraso</span>':""}${d.juros>=6?'<span class="chip bad">Juros altos</span>':'<span class="chip neutral">Juros moderados</span>'}${sim&&sim.quit[d.id]?`<span class="chip neutral">Quitada em ~${prazo(sim.quit[d.id])}</span>`:""}</div></div></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${d.atraso?'<span class="chip bad">Em atraso</span>':""}${d.juros>=6?'<span class="chip bad">Juros altos</span>':'<span class="chip neutral">Juros moderados</span>'}${d.restantes===0&&d.parcela<=d.saldo*d.juros/100?'<span class="chip bad">Parcela não cobre os juros</span>':""}${sim&&sim.quit[d.id]?`<span class="chip neutral">Quitada em ~${prazo(sim.quit[d.id])}</span>`:""}</div></div></div>
       <div style="text-align:right"><div style="font-size:22px;font-weight:800" class="tab">${brl0(d.saldo)}</div><div class="small muted tab">${brl0(d.parcela)}/mês</div><div class="small muted">${pct(d.juros)} ao mês${d.restantes?`, ${d.restantes}x restantes`:""}</div></div></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
         <button class="btn primary sm" data-pay="${d.id}">${I("check")} Paguei a parcela</button>
@@ -777,12 +777,17 @@ function bindCommon(r){
   root.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>openDebt(S.dividas.find(x=>x.id===b.dataset.edit)));
   root.querySelectorAll("[data-rmd]").forEach(b=>b.onclick=()=>{ if(!confirm("Remover esta dívida?")) return; S.dividas=S.dividas.filter(x=>x.id!==b.dataset.rmd); save(); render(); });
   root.querySelectorAll("[data-pay]").forEach(b=>b.onclick=()=>{
-    const d=S.dividas.find(x=>x.id===b.dataset.pay), v=Math.min(d.parcela,d.saldo*(1+d.juros/100));
-    S.lanc.push({id:uid(),tipo:"saida",valor:Math.round(v*100)/100,cat:"dividas",desc:"Parcela: "+d.nome,data:mes===curM()?today():mes+"-01"});
-    d.saldo=Math.max(0,Math.round((d.saldo*(1+d.juros/100)-v)*100)/100); if(d.restantes) d.restantes--; d.atraso=false;
-    if(d.restantes===0&&d.saldo<d.parcela*.05) d.saldo=0;
-    save(); render(); toast(d.saldo>0?"Parcela lançada em Dívidas":"Dívida quitada! Passe esse valor para a próxima");
+    const d=S.dividas.find(x=>x.id===b.dataset.pay); if(!d) return;
+    const before={...d}, lid=uid();
+    const v=Math.round(Math.min(d.parcela,d.saldo)*100)/100;
+    S.lanc.push({id:lid,tipo:"saida",valor:v,cat:"dividas",desc:"Parcela: "+d.nome,data:mes===curM()?today():mes+"-01"});
+    d.saldo=Math.max(0,Math.round((d.saldo-v)*100)/100);
+    if(d.restantes>0){ d.restantes--; if(d.restantes===0) d.saldo=0; }
+    d.atraso=false;
+    save(); render();
+    toast(d.saldo>0?`Parcela paga. Faltam ${brl0(d.saldo)}`:"Dívida quitada! Passe esse valor para a próxima","Desfazer",()=>{ Object.assign(S.dividas.find(x=>x.id===before.id),before); S.lanc=S.lanc.filter(x=>x.id!==lid); save(); render(); });
   });
+
   const ex=document.getElementById("extraDiv"); if(ex) ex.onchange=()=>{ extraDiv=Math.max(0,parseV(ex.value)); render(); };
   if(view==="perfil"){
     document.getElementById("pSave").onclick=()=>{ const v=parseV(document.getElementById("pR").value); if(v<=0){toast("Digite um valor maior que zero");return;} S.renda=v; save(); render(); toast("Renda atualizada"); };

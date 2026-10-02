@@ -114,6 +114,9 @@ nav.bottom button[aria-current="page"]{color:var(--brand2)}
 .heroRow svg{width:16px;height:16px}
 .heroRow .up{color:var(--accent)}
 .heroRow .down{color:#FFB4AE}
+.salbtn{margin-top:18px;width:100%;display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;text-align:left;border:0;cursor:pointer;background:var(--accent);color:#06301F;border-radius:14px;padding:12px 14px;font:inherit}
+.salbtn strong{display:block;font-size:15px}.salbtn small{font-size:12px;font-weight:600;opacity:.8}
+.salbtn:hover{filter:brightness(1.05)}
 .goal{margin-top:22px;background:rgba(255,255,255,.08);border-radius:14px;padding:14px}
 .goal .gl{display:flex;justify-content:space-between;align-items:center;font-size:13px;gap:10px;flex-wrap:wrap}
 .gbar{position:relative;height:10px;background:rgba(255,255,255,.14);border-radius:99px;margin-top:10px;overflow:hidden}
@@ -351,7 +354,7 @@ const esc = s => String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">
 const uid = () => Math.random().toString(36).slice(2,9)+Date.now().toString(36);
 const today = () => { const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,10); };
 const curM = () => today().slice(0,7);
-const parseV = v => { let s=String(v).trim().replace(/[^\d.,-]/g,""); if(s.includes(",")) s=s.replace(/\./g,"").replace(",","."); const n=parseFloat(s); return isFinite(n)?n:0; };
+const parseV = v => { let s=String(v).trim().replace(/[^\d.,-]/g,""); if(s.includes(",")) s=s.replace(/\./g,"").replace(",","."); else if(/^\d{1,3}(\.\d{3})+$/.test(s)) s=s.replace(/\./g,""); const n=parseFloat(s); return isFinite(n)?n:0; };
 const shiftM = (m,k) => { const [y,mo]=m.split("-").map(Number); const d=new Date(y,mo-1+k,1); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"); };
 const mLabel = m => { const [y,mo]=m.split("-").map(Number); const t=new Date(y,mo-1,1).toLocaleDateString("pt-BR",{month:"long",year:"numeric"}); return t.charAt(0).toUpperCase()+t.slice(1); };
 
@@ -372,13 +375,14 @@ function toast(m,label,fn){
 function calc(m){
   const lanc=S.lanc.filter(l=>l.data.slice(0,7)===m);
   const fixos=S.fixos.filter(f=>f.desde<=m && (!f.ate||f.ate>=m));
-  const extras=lanc.filter(l=>l.tipo==="entrada").reduce((a,l)=>a+l.valor,0);
-  const renda=S.renda+extras;
+  const entrou=lanc.filter(l=>l.tipo==="entrada").reduce((a,l)=>a+l.valor,0);
+  const salLanc=lanc.some(l=>l.tipo==="entrada"&&isSal(l.desc));
+  const renda=Math.max(S.renda,entrou);
   const g=Object.fromEntries(CATS.map(c=>[c.k,0]));
   lanc.filter(l=>l.tipo==="saida").forEach(l=>g[l.cat]+=l.valor);
   fixos.forEach(f=>g[f.cat]+=f.valor);
   const saidas=Object.values(g).reduce((a,b)=>a+b,0);
-  const saldo=renda-saidas, sp=renda>0?saldo/renda*100:0;
+  const saldo=entrou-saidas, sp=renda>0?saldo/renda*100:0;
   const temDiv=S.dividas.some(d=>d.saldo>0);
   const rows=CATS.map(c=>{
     const ideal=renda*c.p/100, v=g[c.k];
@@ -387,9 +391,11 @@ function calc(m){
     else st = v===0?"neutral":v<=ideal?"ok":v<=ideal*1.15?"warn":"bad";
     return {...c,ideal,g:v,st,ex:Math.max(0,v-ideal),real:renda>0?v/renda*100:0};
   });
-  return {renda,extras,saidas,saldo,sp,rows,lanc,fixos,temDiv};
+  return {renda,entrou,salLanc,saidas,saldo,sp,rows,lanc,fixos,temDiv};
 }
+const isSal = d => /^sal[aá]rio/i.test(String(d||"").trim());
 function fase(r){
+  if(r.entrou===0) return {t:"Lance o salário do mês",c:"warn"};
   if(r.saidas===0) return {t:"Comece lançando seus gastos",c:"warn"};
   if(r.saldo<0) return {t:"Fase 1 de 3: sair do vermelho",c:"bad"};
   if(r.temDiv) return {t:"Fase 2 de 3: quitar as dívidas",c:"warn"};
@@ -439,9 +445,9 @@ function welcome(){
     ${mark()}
     <h1>Saia do vermelho e fique no verde.</h1>
     <p>O NOVERDE mostra onde o seu dinheiro está escapando, diz onde cortar e organiza suas dívidas até sobrarem 20% do que você ganha todo mês.</p>
-    <label class="f" style="color:rgba(255,255,255,.75)">Quanto você recebe por mês, já com descontos?
+    <label class="f" style="color:rgba(255,255,255,.75)">Quanto você ganha por mês, já com descontos?
       <div class="money"><span>R$</span><input type="text" inputmode="decimal" id="wR" placeholder="0,00" autocomplete="off"></div></label>
-    <p class="small" style="margin:10px 0 24px">Se a renda varia, use a média dos últimos 3 meses. Dinheiro extra você lança depois como entrada.</p>
+    <p class="small" style="margin:10px 0 24px">Esse valor é a base para calcular o limite de cada categoria. O saldo começa em R$ 0: você lança o salário quando ele cair na conta.</p>
     <div class="grid" style="gap:10px">
       <button class="btn primary block" id="wGo">Começar</button>
       <button class="btn ghost block" id="wDemo">Ver com um exemplo</button>
@@ -449,7 +455,7 @@ function welcome(){
   </div></div>`;
 }
 function bindWelcome(){
-  document.getElementById("wGo").onclick=()=>{ const v=parseV(document.getElementById("wR").value); if(v<=0){toast("Digite sua renda mensal");return;} S.renda=v; save(); view="inicio"; render(); setTimeout(()=>openLanc("saida"),250); };
+  document.getElementById("wGo").onclick=()=>{ const v=parseV(document.getElementById("wR").value); if(v<=0){toast("Digite sua renda mensal");return;} S.renda=v; save(); view="inicio"; render(); toast("Quando o salário cair, toque em Recebi o salário"); };
   document.getElementById("wDemo").onclick=loadDemo;
 }
 
@@ -471,7 +477,8 @@ function inicio(r){
   const parc=S.dividas.filter(d=>d.saldo>0).reduce((a,d)=>a+d.parcela,0);
 
   let aT,aP,aC,aI;
-  if(r.saidas===0){aC="warn";aI="list";aT="Lance seus gastos para receber o diagnóstico";aP="Comece pelos fixos: aluguel, contas da casa, escola e plano de saúde. Depois registre cada saída do dia a dia.";}
+  if(r.entrou===0){aC="warn";aI="wallet";aT="Salário deste mês ainda não lançado";aP=r.saidas>0?`Até agora só saíram ${brl0(r.saidas)}. Quando o salário cair na conta, toque em Recebi o salário para ver o saldo real.`:"O saldo começa em R$ 0. Quando o salário cair na conta, toque em Recebi o salário. Os gastos fixos e do dia a dia você lança como saída.";}
+  else if(r.saidas===0){aC="warn";aI="list";aT="Lance seus gastos para receber o diagnóstico";aP="Comece pelos fixos: aluguel, contas da casa, escola e plano de saúde. Depois registre cada saída do dia a dia.";}
   else if(r.saldo<0){aC="bad";aI="alert";aT=`Você está ${brl0(-r.saldo)} no vermelho`;aP=top.length?`O maior vazamento é ${top[0].n}: ${brl0(top[0].ex)} acima do ideal. Corte aqui primeiro.`:"Os gastos estão no ideal, mas a renda não cobre. Renegocie dívidas e busque renda extra.";}
   else if(r.sp<20){aC="warn";aI="target";aT=`Faltam ${brl0(meta-r.saldo)} para a meta de 20%`;aP=top.length?`Ajustando ${top[0].n} você se aproxima da meta.`:r.temDiv?"Use a sobra para antecipar a dívida mais cara.":"Continue registrando tudo para não deixar nada de fora.";}
   else {aC="ok";aI="shield";aT=`Meta batida: ${pct(r.sp)} de sobra`;aP=r.temDiv?"Use a sobra para quitar a dívida mais cara mais rápido.":"Guarde na reserva de emergência (6 meses de custo) e depois invista.";}
@@ -487,9 +494,10 @@ function inicio(r){
 
   return `<section class="hero"><div class="content">
       <div class="heroTop"><span class="heroMark">${mark(false)}</span>${monthSw()}</div>
-      <div class="balLbl">Sobra do mês <button id="eye" aria-label="${hid?"Mostrar":"Esconder"} valores">${I(hid?"eyeoff":"eye")}</button></div>
+      <div class="balLbl">Saldo do mês <button id="eye" aria-label="${hid?"Mostrar":"Esconder"} valores">${I(hid?"eyeoff":"eye")}</button></div>
       <div class="bal tab">${H(r.saldo)}</div>
-      <div class="heroRow"><div><span class="up">${I("up")}</span>Entrou <strong class="tab">${H(r.renda)}</strong></div><div><span class="down">${I("dn")}</span>Saiu <strong class="tab">${H(r.saidas)}</strong></div></div>
+      <div class="heroRow"><div><span class="up">${I("up")}</span>Entrou <strong class="tab">${H(r.entrou)}</strong></div><div><span class="down">${I("dn")}</span>Saiu <strong class="tab">${H(r.saidas)}</strong></div></div>
+      ${r.salLanc?"":`<button class="salbtn" data-sal>${I("wallet")}<span><strong>Recebi o salário</strong><small>Lançar ${hid?"R$ ••••":brl0(S.renda)} como entrada</small></span>${I("right")}</button>`}
       <div class="goal"><div class="gl"><span class="phase p-${f.c}"><b></b>${f.t}</span><span class="tab" style="align-self:center">${pct(r.sp)} de 20%</span></div>
         <div class="gbar"><i class="${r.saldo<0?"neg":""}" style="width:${Math.max(0,prog)}%"></i></div>
         <div class="gl" style="margin-top:8px;opacity:.75"><span>${r.saldo<0?"Quanto falta para zerar":"Rumo à meta"}</span><span class="tab">Meta ${hid?"R$ ••••":brl0(meta)}</span></div></div>
@@ -517,7 +525,7 @@ function inicio(r){
 
 /* ========== linha de lançamento (toque para editar) ========== */
 function txRow(l,fixo){
-  const c=l.tipo==="entrada"?{n:"Entrada extra",ic:"up"}:CAT[l.cat]; const nm=esc(l.desc||c.n);
+  const c=l.tipo==="entrada"?{n:"Entrada",ic:"up"}:CAT[l.cat]; const nm=esc(l.desc||c.n);
   return `<div class="li tx" role="button" tabindex="0" data-open="${fixo?"f":"l"}:${l.id}" aria-label="Editar ${nm}"><span class="ico ${l.tipo==="entrada"?"ok":""}">${I(c.ic)}</span>
     <div><div class="t">${nm}</div><div class="s">${c.n}${fixo?" (fixo mensal)":""}</div></div>
     <div class="acts"><span class="v ${l.tipo==="entrada"?"ok":""}">${l.tipo==="entrada"?"+ ":"- "}${brl(l.valor)}</span>
@@ -550,10 +558,10 @@ function extrato(r){
   const fixHtml = r.fixos.length?`<div class="dayh">Gastos fixos do mês</div>${r.fixos.map(f=>row({...f,tipo:"saida"},true)).join("")}`:"";
   return `<div class="content"><div class="pagehead"><h1>Extrato</h1>${monthSw(true)}</div>
     <div class="grid g3">
-      <div class="kpi"><span class="small muted">Salário</span><span class="n">${brl0(S.renda)}</span></div>
-      <div class="kpi"><span class="small muted">Entradas extras</span><span class="n ok">${brl0(r.extras)}</span></div>
+      <div class="kpi"><span class="small muted">Entradas</span><span class="n ok">${brl0(r.entrou)}</span></div>
       <div class="kpi"><span class="small muted">Saídas</span><span class="n">${brl0(r.saidas)}</span></div>
-      <div class="kpi"><span class="small muted">Sobra</span><span class="n ${r.saldo<0?"bad":r.sp>=20?"ok":"warn"}">${brl0(r.saldo)}</span></div>
+      <div class="kpi"><span class="small muted">Saldo</span><span class="n ${r.saldo<0?"bad":r.sp>=20?"ok":"warn"}">${brl0(r.saldo)}</span></div>
+      <div class="kpi"><span class="small muted">Salário previsto</span><span class="n">${brl0(S.renda)}</span></div>
     </div>
     <div class="row" style="display:flex;gap:10px;margin:16px 0;flex-wrap:wrap"><button class="btn primary" data-act="saida">${I("dn")} Novo gasto</button><button class="btn" data-act="entrada">${I("up")} Nova entrada</button></div>
     <div class="card"><p class="hintTap">Toque em um lançamento para corrigir o valor, a categoria ou a data.</p>${fixHtml||groups?fixHtml+groups:`<div class="empty">Nenhum lançamento em ${mLabel(mes)}.</div>`}</div></div>`;
@@ -641,7 +649,7 @@ function perfil(r){
   return `<div class="content"><div class="pagehead"><h1>Perfil</h1></div>
   <div class="grid g2" style="align-items:start">
     <div class="card"><div class="cardhead"><h3>Renda mensal</h3>${I("wallet")}</div>
-      <label class="f">Salário líquido (entra automaticamente todo mês)<input type="text" inputmode="decimal" id="pR" value="${S.renda.toLocaleString("pt-BR",{minimumFractionDigits:2})}"></label>
+      <label class="f">Salário líquido previsto (base para os limites ideais)<input type="text" inputmode="decimal" id="pR" value="${S.renda.toLocaleString("pt-BR",{minimumFractionDigits:2})}"></label>
       <button class="btn primary" style="margin-top:12px" id="pSave">Salvar renda</button>
       <div style="margin-top:22px"><h3 style="margin-bottom:6px">Divisão ideal</h3>
       <p class="small muted" style="margin:0 0 6px">Os gastos somam 80% da renda e os 20% restantes são a sobra. Enquanto houver dívida, essa fatia vai para quitá-la; depois, para reserva e investimentos.</p>
@@ -684,7 +692,8 @@ function openLanc(tipo,cat,item){
     openSheet(title,`
       <div class="seg"><button data-t="saida" aria-pressed="${!ent}">Saiu dinheiro</button><button data-t="entrada" aria-pressed="${ent}">Entrou dinheiro</button></div>
       <label class="f" style="margin-top:18px">Valor<div class="money"><span>R$</span><input type="text" inputmode="decimal" id="sV" placeholder="0,00" autocomplete="off"></div></label>
-      ${ent?`<p class="small muted">Seu salário de ${brl0(S.renda)} já entra todo mês. Lance aqui só o dinheiro extra: bico, venda, 13º, restituição.</p>`:`
+      ${ent?`<p class="small muted">Lance todo dinheiro que caiu na conta: salário, bico, venda, 13º, restituição.</p>
+      <div class="tags"><button class="btn sm" type="button" id="sSal">${I("wallet")} Salário (${brl0(S.renda)})</button></div>`:`
       <div class="f" style="margin-top:18px">Categoria</div>
       <div class="catpick" style="margin-top:8px">${CATS.map(x=>`<button data-c="${x.k}" aria-pressed="${x.k===c}">${I(x.ic)}${x.n.replace(" e parcelas","")}</button>`).join("")}</div>
       <div class="explain" style="margin-top:10px"><strong>O que entra em ${cc.n}</strong>${cc.o}<div class="tags">${cc.itens.slice(0,9).map(e=>`<span>${e}</span>`).join("")}</div></div>`}
@@ -700,6 +709,7 @@ function openLanc(tipo,cat,item){
       sh.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{ keep(); c=b.dataset.c; draw(); });
       document.getElementById("sV").value=keep.v; document.getElementById("sD").value=keep.d; document.getElementById("sDt").value=keep.dt;
       const sf=document.getElementById("sF"); if(sf) sf.onchange=()=>{ keep(); draw(); };
+      const ss=document.getElementById("sSal"); if(ss) ss.onclick=()=>{ document.getElementById("sV").value=S.renda.toLocaleString("pt-BR",{minimumFractionDigits:2}); document.getElementById("sD").value="Salário"; };
       if(ed){ document.getElementById("sDel").onclick=()=>{ closeSheet(); delTx((item.fixo?"f:":"l:")+item.id); }; }
       document.getElementById("sOk").onclick=()=>{
         const v=parseV(document.getElementById("sV").value); if(v<=0){toast("Digite o valor");return;}
@@ -753,6 +763,10 @@ function bindCommon(r){
   root.querySelectorAll("[data-v]").forEach(b=>b.onclick=()=>{ view=b.dataset.v; render(); scrollTo(0,0); });
   root.querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>{ mes=shiftM(mes,+b.dataset.m); render(); });
   root.querySelectorAll("[data-act]").forEach(b=>b.onclick=()=>openLanc(b.dataset.act));
+  root.querySelectorAll("[data-sal]").forEach(b=>b.onclick=()=>{
+    const id=uid(); S.lanc.push({id,tipo:"entrada",valor:S.renda,cat:null,desc:"Salário",data:mes===curM()?today():mes+"-05"});
+    save(); render(); toast("Salário lançado. Valor diferente? Toque nele para editar","Desfazer",()=>{ S.lanc=S.lanc.filter(x=>x.id!==id); save(); render(); });
+  });
   const eye=document.getElementById("eye"); if(eye) eye.onclick=()=>{ S.hide=!S.hide; save(); render(); };
   root.querySelectorAll("[data-del]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); delTx(b.dataset.del); });
   root.querySelectorAll("[data-edit-tx]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); openLanc(null,null,findTx(b.dataset.editTx)); });
@@ -795,6 +809,7 @@ function loadDemo(){
       {id:uid(),tipo:"saida",valor:520,cat:"lazer",desc:"iFood",data:d(15)},{id:uid(),tipo:"saida",valor:190,cat:"lazer",desc:"Restaurante domingo",data:d(8)},
       {id:uid(),tipo:"saida",valor:230,cat:"outros",desc:"Roupas",data:d(11)},
       {id:uid(),tipo:"saida",valor:480,cat:"dividas",desc:"Parcela: Cartão atrasado",data:d(10)},{id:uid(),tipo:"saida",valor:610,cat:"dividas",desc:"Parcela: Empréstimo pessoal",data:d(10)},
+      {id:uid(),tipo:"entrada",valor:6000,desc:"Salário",data:d(5)},
       {id:uid(),tipo:"entrada",valor:300,desc:"Venda de bolo",data:d(13)}],
     dividas:[
       {id:uid(),nome:"Cartão atrasado",tipo:"cartao",saldo:4800,parcela:480,juros:14,restantes:0,atraso:true},

@@ -149,7 +149,14 @@ nav.bottom button[aria-current="page"]{color:var(--brand2)}
 .li .t{font-weight:600}
 .li .s{font-size:13px;color:var(--muted)}
 .li .v{font-weight:700;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-.dayh{font-size:12px;font-weight:700;color:var(--muted);padding:16px 0 4px;text-transform:capitalize}
+.dayh{font-size:12px;font-weight:700;color:var(--muted);padding:16px 0 4px}
+.li.tx{cursor:pointer;margin:0 -8px;padding:12px 8px;gap:10px}
+.li.tx:hover{background:var(--surface2)}
+
+.li.tx .acts{display:flex;align-items:center;gap:0}
+.li.tx .acts .iconbtn{width:34px;height:34px;color:var(--muted)}
+.li.tx .acts .iconbtn svg{width:18px;height:18px}
+.hintTap{font-size:12px;color:var(--muted);margin:2px 0 6px}
 .rank{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-weight:800}
 .rank.bad{background:var(--badbg);color:var(--bad)}.rank.warn{background:var(--warnbg);color:var(--warn)}
 
@@ -184,6 +191,7 @@ nav.bottom button[aria-current="page"]{color:var(--brand2)}
 .tags span{font-size:12px;font-weight:600;background:var(--surface2);border:1px solid var(--line);padding:4px 10px;border-radius:999px}
 .status{font-weight:700;padding:12px 14px;border-radius:12px;margin-top:6px}
 .status.ok{background:var(--okbg)}.status.warn{background:var(--warnbg)}.status.bad{background:var(--badbg)}.status.neutral{background:var(--surface2)}
+@media (max-width:420px){.li.tx{grid-template-columns:38px 1fr auto}.li.tx .ico{width:38px;height:38px}.li.tx .v{font-size:14px}}
 @media (max-width:560px){.cbody{padding-left:18px}.cat>button{grid-template-columns:44px 1fr 20px}.cat>button .pc{display:none}}
 
 /* dívidas */
@@ -236,6 +244,8 @@ input:focus{outline:2px solid var(--brand2);outline-offset:-1px;border-color:tra
 
 .toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom,0px));transform:translateX(-50%) translateY(16px);background:var(--ink);color:var(--bg);padding:12px 18px;border-radius:14px;font-weight:600;opacity:0;pointer-events:none;transition:.25s;z-index:60;max-width:90vw;text-align:center}
 .toast.show{opacity:1;transform:translateX(-50%)}
+.toast.act{pointer-events:auto;display:flex;align-items:center;gap:14px;text-align:left}
+.toast button{border:0;background:transparent;color:var(--accent);font-weight:800;cursor:pointer;padding:4px 2px;white-space:nowrap}
 @media (min-width:900px){.toast{bottom:32px}}
 .empty{text-align:center;padding:30px 12px;color:var(--muted)}
 .pagehead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:22px 0 16px}
@@ -351,7 +361,12 @@ try{ const raw=localStorage.getItem(KEY); if(raw) S=Object.assign(S,JSON.parse(r
 let mes=curM(), view="inicio", openCats=new Set(), extraDiv=null;
 
 function save(){ try{ localStorage.setItem(KEY,JSON.stringify(S)); }catch(e){ toast("Não foi possível salvar neste navegador"); } }
-function toast(m){ const t=document.getElementById("toast"); t.textContent=m; t.classList.add("show"); clearTimeout(toast.t); toast.t=setTimeout(()=>t.classList.remove("show"),2400); }
+function toast(m,label,fn){
+  const t=document.getElementById("toast"); t.innerHTML=""; const sp=document.createElement("span"); sp.textContent=m; t.appendChild(sp);
+  t.classList.toggle("act",!!fn);
+  if(fn){ const b=document.createElement("button"); b.textContent=label; b.onclick=()=>{ t.classList.remove("show","act"); fn(); }; t.appendChild(b); }
+  t.classList.add("show"); clearTimeout(toast.t); toast.t=setTimeout(()=>t.classList.remove("show","act"),fn?6000:2400);
+}
 
 /* ========== cálculo ========== */
 function calc(m){
@@ -494,19 +509,44 @@ function inicio(r){
           ${parc>0?`<div class="li" style="margin-top:12px;border-top:1px solid var(--line)"><span class="ico">${I("card")}</span><div><div class="t">Parcelas de dívidas</div><div class="s">${pct(parc/r.renda*100)} da renda comprometida</div></div><div class="v">${brl0(parc)}/mês</div></div>`:""}
         </div>
       </div>
+      ${r.lanc.length?`<div class="card" style="margin-top:16px"><div class="cardhead"><h3>Últimos lançamentos</h3><button class="btn link sm" data-v="extrato">Ver extrato</button></div>
+        <p class="hintTap">Digitou errado? Toque no lançamento para editar ou excluir.</p>
+        ${[...r.lanc].reverse().slice(0,5).map(l=>txRow(l,false)).join("")}</div>`:""}
     </div>`;
+}
+
+/* ========== linha de lançamento (toque para editar) ========== */
+function txRow(l,fixo){
+  const c=l.tipo==="entrada"?{n:"Entrada extra",ic:"up"}:CAT[l.cat]; const nm=esc(l.desc||c.n);
+  return `<div class="li tx" role="button" tabindex="0" data-open="${fixo?"f":"l"}:${l.id}" aria-label="Editar ${nm}"><span class="ico ${l.tipo==="entrada"?"ok":""}">${I(c.ic)}</span>
+    <div><div class="t">${nm}</div><div class="s">${c.n}${fixo?" (fixo mensal)":""}</div></div>
+    <div class="acts"><span class="v ${l.tipo==="entrada"?"ok":""}">${l.tipo==="entrada"?"+ ":"- "}${brl(l.valor)}</span>
+    <button class="iconbtn" data-edit-tx="${fixo?"f":"l"}:${l.id}" aria-label="Editar ${nm}">${I("pencil")}</button>
+    <button class="iconbtn" data-del="${fixo?"f":"l"}:${l.id}" aria-label="Excluir ${nm}">${I("trash")}</button></div></div>`;
+}
+function findTx(key){ const [t,id]=key.split(":"); return t==="f"?{...S.fixos.find(x=>x.id===id),tipo:"saida",fixo:true}:{...S.lanc.find(x=>x.id===id),fixo:false}; }
+function delTx(key){
+  const [t,id]=key.split(":");
+  if(t==="f"){
+    const f=S.fixos.find(x=>x.id===id); if(!f) return;
+    if(!confirm("Parar de repetir este gasto fixo a partir deste mês? Os meses anteriores continuam com ele.")) return;
+    const before=JSON.parse(JSON.stringify(S.fixos));
+    if(f.desde>=mes) S.fixos=S.fixos.filter(x=>x.id!==id); else f.ate=shiftM(mes,-1);
+    save(); render(); toast("Gasto fixo removido","Desfazer",()=>{ S.fixos=before; save(); render(); });
+  } else {
+    const i=S.lanc.findIndex(x=>x.id===id); if(i<0) return; const old=S.lanc[i];
+    S.lanc.splice(i,1); save(); render();
+    toast(old.tipo==="entrada"?"Entrada excluída":"Gasto excluído","Desfazer",()=>{ S.lanc.push(old); save(); render(); });
+  }
 }
 
 /* ========== extrato ========== */
 function extrato(r){
   const items=[...r.lanc].sort((a,b)=>b.data.localeCompare(a.data)||0);
-  const row = (l,fixo) => { const c=l.tipo==="entrada"?{n:"Entrada",ic:"up"}:CAT[l.cat];
-    return `<div class="li"><span class="ico ${l.tipo==="entrada"?"ok":""}">${I(c.ic)}</span>
-      <div><div class="t">${esc(l.desc||c.n)}</div><div class="s">${c.n}${fixo?" (fixo mensal)":""}</div></div>
-      <div style="display:flex;align-items:center;gap:4px"><span class="v ${l.tipo==="entrada"?"ok":""}">${l.tipo==="entrada"?"+ ":"- "}${brl(l.valor)}</span>
-      <button class="iconbtn" data-del="${fixo?"f":"l"}:${l.id}" aria-label="Excluir ${esc(l.desc||c.n)}">${I("trash")}</button></div></div>`; };
+  const row=txRow;
+  const cap=t=>t.charAt(0).toUpperCase()+t.slice(1);
   let groups="", last="";
-  items.forEach(l=>{ if(l.data!==last){ last=l.data; const [y,m,d]=l.data.split("-").map(Number); groups+=`<div class="dayh">${new Date(y,m-1,d).toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"})}</div>`; } groups+=row(l,false); });
+  items.forEach(l=>{ if(l.data!==last){ last=l.data; const [y,m,d]=l.data.split("-").map(Number); groups+=`<div class="dayh">${cap(new Date(y,m-1,d).toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"}))}</div>`; } groups+=row(l,false); });
   const fixHtml = r.fixos.length?`<div class="dayh">Gastos fixos do mês</div>${r.fixos.map(f=>row({...f,tipo:"saida"},true)).join("")}`:"";
   return `<div class="content"><div class="pagehead"><h1>Extrato</h1>${monthSw(true)}</div>
     <div class="grid g3">
@@ -516,7 +556,7 @@ function extrato(r){
       <div class="kpi"><span class="small muted">Sobra</span><span class="n ${r.saldo<0?"bad":r.sp>=20?"ok":"warn"}">${brl0(r.saldo)}</span></div>
     </div>
     <div class="row" style="display:flex;gap:10px;margin:16px 0;flex-wrap:wrap"><button class="btn primary" data-act="saida">${I("dn")} Novo gasto</button><button class="btn" data-act="entrada">${I("up")} Nova entrada</button></div>
-    <div class="card">${fixHtml||groups?fixHtml+groups:`<div class="empty">Nenhum lançamento em ${mLabel(mes)}.</div>`}</div></div>`;
+    <div class="card"><p class="hintTap">Toque em um lançamento para corrigir o valor, a categoria ou a data.</p>${fixHtml||groups?fixHtml+groups:`<div class="empty">Nenhum lançamento em ${mLabel(mes)}.</div>`}</div></div>`;
 }
 
 /* ========== categorias ========== */
@@ -632,11 +672,16 @@ function closeSheet(){ bg.classList.remove("show"); sh.innerHTML=""; }
 bg.addEventListener("click",e=>{ if(e.target===bg) closeSheet(); });
 document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&bg.classList.contains("show")) closeSheet(); });
 
-function openLanc(tipo,cat){
-  let t=tipo, c=cat||"moradia";
+function openLanc(tipo,cat,item){
+  const ed=!!item;
+  let t=ed?item.tipo:tipo, c=ed?(item.cat||"moradia"):(cat||"moradia");
+  const keep=()=>{ keep.v=document.getElementById("sV")?.value||""; keep.d=document.getElementById("sD")?.value||""; keep.dt=document.getElementById("sDt")?.value||keep.dt; keep.f=document.getElementById("sF")?.checked??keep.f; };
+  keep.v=ed?item.valor.toLocaleString("pt-BR",{minimumFractionDigits:2}):""; keep.d=ed?(item.desc||""):"";
+  keep.dt=ed?(item.fixo?item.desde+"-01":item.data):(mes===curM()?today():mes+"-01"); keep.f=ed?item.fixo:false;
   const draw=()=>{
     const ent=t==="entrada", cc=CAT[c];
-    openSheet(ent?"Nova entrada":"Novo gasto",`
+    const title=ed?(ent?"Editar entrada":"Editar gasto"):(ent?"Nova entrada":"Novo gasto");
+    openSheet(title,`
       <div class="seg"><button data-t="saida" aria-pressed="${!ent}">Saiu dinheiro</button><button data-t="entrada" aria-pressed="${ent}">Entrou dinheiro</button></div>
       <label class="f" style="margin-top:18px">Valor<div class="money"><span>R$</span><input type="text" inputmode="decimal" id="sV" placeholder="0,00" autocomplete="off"></div></label>
       ${ent?`<p class="small muted">Seu salário de ${brl0(S.renda)} já entra todo mês. Lance aqui só o dinheiro extra: bico, venda, 13º, restituição.</p>`:`
@@ -645,26 +690,35 @@ function openLanc(tipo,cat){
       <div class="explain" style="margin-top:10px"><strong>O que entra em ${cc.n}</strong>${cc.o}<div class="tags">${cc.itens.slice(0,9).map(e=>`<span>${e}</span>`).join("")}</div></div>`}
       <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px;margin-top:16px">
         <label class="f">Descrição<input type="text" id="sD" placeholder="${ent?"Ex.: venda":"Ex.: conta de luz"}"></label>
-        <label class="f">Data<input type="date" id="sDt" value="${mes===curM()?today():mes+"-01"}"></label></div>
-      ${ent?"":`<label class="switch" style="margin-top:16px"><span>Gasto fixo, repete todo mês<br><span class="small muted" style="font-weight:500">Aluguel, escola, plano, assinaturas</span></span><input type="checkbox" id="sF"></label>`}
-      <button class="btn primary block" style="margin-top:20px" id="sOk">${ent?"Adicionar entrada":"Adicionar gasto"}</button>`,
+        <label class="f">${keep.f&&!ent?"Começa em":"Data"}<input type="date" id="sDt"></label></div>
+      ${ent?"":`<label class="switch" style="margin-top:16px"><span>Gasto fixo, repete todo mês<br><span class="small muted" style="font-weight:500">Aluguel, escola, plano, assinaturas</span></span><input type="checkbox" id="sF" ${keep.f?"checked":""}></label>`}
+      ${ed&&item.fixo?`<p class="small muted" style="margin:10px 0 0">Alterar um gasto fixo muda o valor em todos os meses em que ele aparece.</p>`:""}
+      <button class="btn primary block" style="margin-top:20px" id="sOk">${ed?"Salvar alterações":ent?"Adicionar entrada":"Adicionar gasto"}</button>
+      ${ed?`<button class="btn danger block" style="margin-top:10px" id="sDel">${I("trash")} Excluir ${ent?"entrada":"lançamento"}</button>`:""}`,
     ()=>{
       sh.querySelectorAll("[data-t]").forEach(b=>b.onclick=()=>{ keep(); t=b.dataset.t; draw(); });
       sh.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{ keep(); c=b.dataset.c; draw(); });
-      if(keep.v){ document.getElementById("sV").value=keep.v; document.getElementById("sD").value=keep.d; }
+      document.getElementById("sV").value=keep.v; document.getElementById("sD").value=keep.d; document.getElementById("sDt").value=keep.dt;
+      const sf=document.getElementById("sF"); if(sf) sf.onchange=()=>{ keep(); draw(); };
+      if(ed){ document.getElementById("sDel").onclick=()=>{ closeSheet(); delTx((item.fixo?"f:":"l:")+item.id); }; }
       document.getElementById("sOk").onclick=()=>{
         const v=parseV(document.getElementById("sV").value); if(v<=0){toast("Digite o valor");return;}
         const desc=document.getElementById("sD").value.trim(), data=document.getElementById("sDt").value||today();
-        if(!ent && document.getElementById("sF").checked) S.fixos.push({id:uid(),valor:v,cat:c,desc,desde:data.slice(0,7)});
-        else S.lanc.push({id:uid(),tipo:t,valor:v,cat:ent?null:c,desc,data});
-        keep.v=keep.d=""; mes=data.slice(0,7); save(); closeSheet(); render();
+        const fixo=!ent && document.getElementById("sF").checked;
+        const snap=JSON.stringify({l:S.lanc,f:S.fixos});
+        const id=ed?item.id:uid();
+        if(ed){ S.lanc=S.lanc.filter(x=>x.id!==id); if(!(item.fixo&&fixo)) S.fixos=S.fixos.filter(x=>x.id!==id); }
+        if(fixo){ const f=S.fixos.find(x=>x.id===id); if(f) Object.assign(f,{valor:v,cat:c,desc,desde:data.slice(0,7)}); else S.fixos.push({id,valor:v,cat:c,desc,desde:data.slice(0,7)}); }
+        else S.lanc.push({id,tipo:t,valor:v,cat:ent?null:c,desc,data});
+        mes=data.slice(0,7); save(); closeSheet(); render();
+        const undo=()=>{ const o=JSON.parse(snap); S.lanc=o.l; S.fixos=o.f; save(); render(); };
+        if(ed){ toast("Alterações salvas","Desfazer",undo); return; }
         const row=calc(mes).rows.find(x=>x.k===c);
-        toast(ent?"Entrada adicionada":row.st==="bad"?`Gasto adicionado. ${row.n} passou do ideal`:row.st==="warn"?`Gasto adicionado. Atenção em ${row.n}`:"Gasto adicionado");
+        toast(ent?"Entrada adicionada":row.st==="bad"?`Gasto adicionado. ${row.n} passou do ideal`:row.st==="warn"?`Gasto adicionado. Atenção em ${row.n}`:"Gasto adicionado","Desfazer",undo);
       };
     });
   };
-  const keep=()=>{ keep.v=document.getElementById("sV")?.value||""; keep.d=document.getElementById("sD")?.value||""; };
-  keep.v=keep.d=""; draw();
+  draw();
 }
 function openDebt(d){
   const ed=!!d; d=d||{nome:"",tipo:"cartao",saldo:"",parcela:"",juros:14,restantes:"",atraso:false};
@@ -700,12 +754,9 @@ function bindCommon(r){
   root.querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>{ mes=shiftM(mes,+b.dataset.m); render(); });
   root.querySelectorAll("[data-act]").forEach(b=>b.onclick=()=>openLanc(b.dataset.act));
   const eye=document.getElementById("eye"); if(eye) eye.onclick=()=>{ S.hide=!S.hide; save(); render(); };
-  root.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{
-    const [t,id]=b.dataset.del.split(":");
-    if(t==="f"){ if(!confirm("Parar de repetir este gasto fixo a partir deste mês?")) return; const f=S.fixos.find(x=>x.id===id); if(f.desde>=mes) S.fixos=S.fixos.filter(x=>x.id!==id); else f.ate=shiftM(mes,-1); }
-    else S.lanc=S.lanc.filter(x=>x.id!==id);
-    save(); render(); toast("Lançamento excluído");
-  });
+  root.querySelectorAll("[data-del]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); delTx(b.dataset.del); });
+  root.querySelectorAll("[data-edit-tx]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); openLanc(null,null,findTx(b.dataset.editTx)); });
+  root.querySelectorAll("[data-open]").forEach(el=>{ const go=()=>openLanc(null,null,findTx(el.dataset.open)); el.onclick=go; el.onkeydown=e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); go(); } }; });
   root.querySelectorAll(".cat>button").forEach(b=>b.onclick=()=>{ const k=b.parentElement.dataset.cat; openCats.has(k)?openCats.delete(k):openCats.add(k); b.parentElement.classList.toggle("open"); b.setAttribute("aria-expanded",openCats.has(k)); });
   root.querySelectorAll("[data-lcat]").forEach(b=>b.onclick=()=>openLanc("saida",b.dataset.lcat));
   root.querySelectorAll("[data-newdebt]").forEach(b=>b.onclick=()=>openDebt());
